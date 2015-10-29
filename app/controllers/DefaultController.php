@@ -18,13 +18,25 @@ class DefaultController extends Controller
 	public function actionIndex()
 	{
 		// $html = file_get_contents(Yii::getAlias('@app/runtime/example2.html'));
-		// $this->parse($html);
-		//基本概况
+		// $this->parse($html, 121);
+		// exit;
+		$back_set = 's_school_list_b';
+		$source_set = 's_school_list';
 		$redis = Yii::$app->redis;
-		$link =	$redis->srandmember('s_school_list');
-		$html = $this->getHtml('http://www.findingschool.net/Pacelli-High-School');
+		while ($link = $redis->spop($source_set)) {
+			try {
+				$html = $this->getHtml('http://www.findingschool.net/St-Pauls-School');
 
-		echo $this->_school($html);
+				echo $this->_school($html), PHP_EOL;
+				$redis->sadd($back_set, $link);
+				sleep(3);
+			} catch (\Exception $e) {
+				$redis->sadd($source_set, $link);
+			}
+
+		}
+		// $link =	$redis->srandmember('s_school_list');
+
 	}
 	/**
 	 * 获取所有学校的链接地址发到一个队列
@@ -41,7 +53,7 @@ class DefaultController extends Controller
 		$KEY = 's_school_list';
 		$total_page = 38;
 		$link = 'http://www.findingschool.net/schoolinfo/v2/searchschool_list.php?cid=3&page={page}&pnum=25&html_pnum=25&q_s=&searsid=-&searcid=-&address=&get_lat=&get_lng=&nav_sc=1&radius=50&visits=&type=&searclass=0&studnum=0;4500&tuition=0;150000&apbox=&grades=&stud=0&s_sam=0&s_re=0&s_im=0&s_qa=0&s_esl=0&letter=';
-		$page_idx = 30;
+		$page_idx = 10;
 		$total = 0;
 		while ($page_idx > 0) {
 			$context = stream_context_create([
@@ -128,11 +140,12 @@ class DefaultController extends Controller
 		}
 	}
 
-	protected function parse($html)
+	protected function parse($html, $school_id)
 	{
 		$crawler = new Crawler($html);
 		// $this->t($crawler);
 		$result = [];
+		$db = Yii::$app->db;
 		try {
 			$stoped = false;
 			$_t_node = $crawler->filter('.fa-flask')->parents();
@@ -156,21 +169,31 @@ class DefaultController extends Controller
 			});
 			$ranks = [];
 
-			$next_nodes->filter('tbody')->each(function(Crawler $n) use (&$ranks) {
+			$next_nodes->filter('tbody')->each(function(Crawler $n, $i) use (&$ranks, $_year, $school_id) {
 				$_items = [];
-				$n->filter('tr')->each(function (Crawler $t) use(&$_items) {
+				$n->filter('tr')->each(function (Crawler $t) use(&$_items, $i, $_year, $school_id) {
 					$this->write($t->html());
 					$_items[] = [
 						$t->filter('td')->eq(0)->html(),
 						trim(strip_tags($t->filter('td')->eq(1)->html())),
 						$t->filter('td')->eq(2)->html(),
+						$i + 1,
+						$_year,
+						$school_id
 					];
 				});
 				$ranks[] = $_items;
 			});
 			$this->write($ranks);
+			foreach ($ranks as $rank) {
+				$db->createCommand()->batchInsert('middle_school_admit_info',
+					['rank', 'school', 'admit_num', 'school_type', 'year', 'middle_school_id'],
+					$rank
+				)->execute();
+			}
 		} catch (\Exception $e) {
-			echo 'Not found sat information, passed.', PHP_EOL;
+			throw $e;
+			echo 'Not found rankssss... information, passed.', PHP_EOL;
 		}
 	}
 
@@ -521,7 +544,9 @@ class DefaultController extends Controller
 
 
 		$school->setAttributes($result, false);
-		$school->insert();
+		if ($school->insert()) {
+			$this->parse($html, $school->id);
+		}
 		return $school->id;
 	}
 }
