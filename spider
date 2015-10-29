@@ -1,0 +1,42 @@
+#!/usr/bin/env php
+<?php
+defined('STDIN') or define('STDIN', fopen('php://stdin', 'r'));
+defined('STDOUT') or define('STDOUT', fopen('php://stdout', 'w'));
+
+define('YII_DEBUG', true);
+define('YII_ENV', 'prod');
+require __DIR__ . '/../vendor/autoload.php';
+require __DIR__ . '/../vendor/yiisoft/yii2/Yii.php';
+
+Yii::setAlias('console', __DIR__ . '/console');
+$config = [
+	'id' => 'console',
+	'name' => 'console-app',
+	'vendorPath' => __DIR__ . '/../vendor',
+	'basePath' => __DIR__ . '/app',
+	'controllerNamespace' => 'app\controllers',
+	'bootstrap' => ['log'],
+	'components' => [
+		'db' => [
+			'class' => 'yii\db\Connection',
+			'dsn' => 'mysql:host=localhost;port=3306;dbname=lxpgw',
+			'username' => 'root',
+			'password' => '',
+			'charset' => 'utf8',
+			'enableSchemaCache' => false,
+		],
+		'redis' => [
+			'class' => 'yii\redis\Connection'
+		],
+		'log' => [
+			'targets' => [
+				['class' => 'yii\log\FileTarget','levels' => ['error', 'warning'], 'logVars' => []],
+			]
+		]
+	]
+];
+
+$app = new \yii\console\Application($config);
+
+exit($app->run());
+
